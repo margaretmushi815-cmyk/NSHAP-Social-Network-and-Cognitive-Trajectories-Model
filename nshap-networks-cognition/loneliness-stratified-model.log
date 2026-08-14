@@ -1,0 +1,794 @@
+-------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /Users/margaretmushi/Desktop/SRP/claude_trial2/nshap-networks-cognition/loneliness-stratified-mo
+> del.log
+  log type:  text
+ opened on:  13 Aug 2026, 19:32:24
+
+. 
+. // EDIT to match your setup
+. if "$datadir"=="" global datadir "/Users/margaretmushi/Desktop/SRP/NSHAP"
+
+. 
+. //------------------------------------------------------------------------
+. // Build baseline UCLA loneliness composite (person-level) and median-split
+. //------------------------------------------------------------------------
+. use su_id companion leftout isolated using "$datadir/nshap_w1_core.dta", clear
+(NSHAP W1 core data file (3.0))
+
+. 
+. // non-missing values must be on the 1-3 scale
+. assert inlist(companion,1,2,3) if !missing(companion)
+
+. assert inlist(leftout,1,2,3)   if !missing(leftout)
+
+. assert inlist(isolated,1,2,3)  if !missing(isolated)
+
+. 
+. // simple addition -> composite is missing unless ALL three items are
+. // present (Stata arithmetic returns missing if any addend is missing,
+. // including extended missing codes)
+. gen loneliness = companion + leftout + isolated
+(620 missing values generated)
+
+. label variable loneliness "W1 UCLA loneliness (sum of 3 items, 3-9)"
+
+. 
+. // median split among respondents with a score
+. summarize loneliness, detail
+
+          W1 UCLA loneliness (sum of 3 items, 3-9)
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%            3              3
+ 5%            3              3
+10%            3              3       Obs               2,385
+25%            3              3       Sum of wgt.       2,385
+
+50%            3                      Mean           4.044025
+                        Largest       Std. dev.      1.406835
+75%            5              9
+90%            6              9       Variance       1.979185
+95%            7              9       Skewness       1.293378
+99%            9              9       Kurtosis       4.031499
+
+. scalar med = r(p50)
+
+. gen byte lonely_grp = loneliness > med if !missing(loneliness)
+(620 missing values generated)
+
+. label define lon_lbl 0 "Low loneliness" 1 "High loneliness"
+
+. label values lonely_grp lon_lbl
+
+. display as text "Median loneliness = " as result med
+Median loneliness = 3
+
+. tab lonely_grp   // check group balance (discrete scale -> may be uneven)
+
+     lonely_grp |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+ Low loneliness |      1,291       54.13       54.13
+High loneliness |      1,094       45.87      100.00
+----------------+-----------------------------------
+          Total |      2,385      100.00
+
+. 
+. keep su_id loneliness lonely_grp
+
+. tempfile lon
+
+. save "`lon'"
+file /var/folders/ng/qfvr38953cs73gt1npzhgd4h0000gn/T//S_89018.000001 saved as .dta format
+
+. 
+. //------------------------------------------------------------------------
+. // Attach to the analytic long dataset
+. //------------------------------------------------------------------------
+. use "$datadir/growth_long.dta", clear
+(NSHAP W1 core data file (3.0))
+
+. xtset id years
+
+Panel variable: id (strongly balanced)
+ Time variable: years, 0 to 10, but with gaps
+         Delta: 1 unit
+
+. merge m:1 su_id using "`lon'", keep(match master) nogen
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                             4,656  
+    -----------------------------------------
+
+. 
+. //========================================================================
+. // Fully-adjusted growth model (Model 4), run separately by group
+. //========================================================================
+. display as text _newline "=== LOW loneliness group ==="
+
+=== LOW loneliness group ===
+
+. mixed cogz c.years##c.alters_base i.gender age_base i.race i.educ ///
+>     if lonely_grp==0 || id: years, cov(unstructured)
+
+Performing EM optimization: 
+
+Performing gradient-based optimization: 
+
+Iteration 0:  Log likelihood = -2512.9099  
+Iteration 1:  Log likelihood = -2512.5024  
+Iteration 2:  Log likelihood = -2512.5022  
+
+Computing standard errors:
+
+Mixed-effects ML regression                          Number of obs    =  2,148
+Group variable: id                                   Number of groups =    716
+                                                     Obs per group:
+                                                                  min =      3
+                                                                  avg =    3.0
+                                                                  max =      3
+                                                     Wald chi2(12)    = 379.14
+Log likelihood = -2512.5022                          Prob > chi2      = 0.0000
+
+----------------------------------------------------------------------------------------------------
+                              cogz | Coefficient  Std. err.      z    P>|z|     [95% conf. interval]
+-----------------------------------+----------------------------------------------------------------
+                             years |  -.0268872   .0113007    -2.38   0.017    -.0490363   -.0047382
+                       alters_base |  -.0182033   .0200109    -0.91   0.363    -.0574239    .0210173
+                                   |
+             c.years#c.alters_base |    .007894   .0027781     2.84   0.004     .0024491    .0133389
+                                   |
+                            gender |
+                           female  |   .0517155   .0436918     1.18   0.237    -.0339189    .1373499
+                          age_base |  -.0131996   .0032151    -4.11   0.000    -.0195011   -.0068982
+                                   |
+                              race |
+           black/african american  |  -.6174821   .0700691    -8.81   0.000    -.7548151   -.4801491
+american indian or alaskan native  |  -.6128542   .2300133    -2.66   0.008    -1.063672   -.1620364
+        asian or pacific islander  |  -.4608488   .2135762    -2.16   0.031    -.8794505   -.0422472
+                            other  |  -.5600419   .1162145    -4.82   0.000    -.7878181   -.3322657
+                                   |
+                              educ |
+                         hs/equiv  |    .479785   .0731414     6.56   0.000     .3364305    .6231395
+      voc cert/some college/assoc  |   .6329658   .0705792     8.97   0.000     .4946331    .7712986
+                bachelors or more  |   .8402327   .0730342    11.50   0.000     .6970883     .983377
+                                   |
+                             _cons |   .5479604   .2430613     2.25   0.024      .071569    1.024352
+----------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+  Random-effects parameters  |   Estimate   Std. err.     [95% conf. interval]
+-----------------------------+------------------------------------------------
+id: Unstructured             |
+                  var(years) |   .0050601   .0007781      .0037435    .0068398
+                  var(_cons) |   .3042161   .0378421      .2383962    .3882085
+            cov(years,_cons) |  -.0244057   .0046024     -.0334263   -.0153851
+-----------------------------+------------------------------------------------
+               var(Residual) |   .3783886   .0199984      .3411542    .4196869
+------------------------------------------------------------------------------
+LR test vs. linear model: chi2(3) = 143.37                Prob > chi2 = 0.0000
+
+Note: LR test is conservative and provided only for reference.
+
+. // capture fixed + random effects for the LOW group NOW (before the margins
+. // loop below overwrites r(table))
+. matrix FE_low = r(table)'
+
+. estat recovariance
+
+Random-effects covariance matrix for level id
+
+             |     years      _cons 
+-------------+----------------------
+       years |  .0050601            
+       _cons | -.0244057   .3042161 
+
+. matrix RE_low = r(cov)
+
+. estimates store lon_low
+
+. 
+. display as text _newline "=== HIGH loneliness group ==="
+
+=== HIGH loneliness group ===
+
+. mixed cogz c.years##c.alters_base i.gender age_base i.race i.educ ///
+>     if lonely_grp==1 || id: years, cov(unstructured)
+
+Performing EM optimization: 
+
+Performing gradient-based optimization: 
+
+Iteration 0:  Log likelihood = -2139.8195  
+Iteration 1:  Log likelihood = -2139.2989  
+Iteration 2:  Log likelihood = -2139.2981  
+Iteration 3:  Log likelihood = -2139.2981  
+
+Computing standard errors:
+
+Mixed-effects ML regression                          Number of obs    =  1,710
+Group variable: id                                   Number of groups =    570
+                                                     Obs per group:
+                                                                  min =      3
+                                                                  avg =    3.0
+                                                                  max =      3
+                                                     Wald chi2(12)    = 366.65
+Log likelihood = -2139.2981                          Prob > chi2      = 0.0000
+
+----------------------------------------------------------------------------------------------------
+                              cogz | Coefficient  Std. err.      z    P>|z|     [95% conf. interval]
+-----------------------------------+----------------------------------------------------------------
+                             years |   .0112259    .013456     0.83   0.404    -.0151473    .0375991
+                       alters_base |   .0293672   .0250889     1.17   0.242    -.0198062    .0785406
+                                   |
+             c.years#c.alters_base |  -.0028052   .0034053    -0.82   0.410    -.0094794    .0038691
+                                   |
+                            gender |
+                           female  |   .1343496   .0536708     2.50   0.012     .0291567    .2395424
+                          age_base |  -.0235722   .0037372    -6.31   0.000    -.0308969   -.0162475
+                                   |
+                              race |
+           black/african american  |  -.4034238   .0700615    -5.76   0.000    -.5407418   -.2661058
+american indian or alaskan native  |  -.3148843   .3546144    -0.89   0.375    -1.009916    .3801472
+        asian or pacific islander  |  -.5224628   .2319435    -2.25   0.024    -.9770636    -.067862
+                            other  |  -.2120741   .1139422    -1.86   0.063    -.4353967    .0112485
+                                   |
+                              educ |
+                         hs/equiv  |   .6703164   .0834401     8.03   0.000     .5067768    .8338561
+      voc cert/some college/assoc  |   .9178604    .081975    11.20   0.000     .7571924    1.078528
+                bachelors or more  |   1.165309   .0866585    13.45   0.000     .9954615    1.335156
+                                   |
+                             _cons |   .7337233   .2771511     2.65   0.008     .1905172    1.276929
+----------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+  Random-effects parameters  |   Estimate   Std. err.     [95% conf. interval]
+-----------------------------+------------------------------------------------
+id: Unstructured             |
+                  var(years) |   .0050892   .0010109       .003448    .0075115
+                  var(_cons) |    .353461   .0509467      .2664723    .4688468
+            cov(years,_cons) |  -.0267736   .0060812     -.0386926   -.0148546
+-----------------------------+------------------------------------------------
+               var(Residual) |   .4625688   .0274002      .4118656    .5195139
+------------------------------------------------------------------------------
+LR test vs. linear model: chi2(3) = 105.62                Prob > chi2 = 0.0000
+
+Note: LR test is conservative and provided only for reference.
+
+. // capture fixed + random effects for the HIGH group NOW
+. matrix FE_high = r(table)'
+
+. estat recovariance
+
+Random-effects covariance matrix for level id
+
+             |     years      _cons 
+-------------+----------------------
+       years |  .0050892            
+       _cons | -.0267736    .353461 
+
+. matrix RE_high = r(cov)
+
+. estimates store lon_high
+
+. 
+. // side-by-side comparison of the network terms across the two groups.
+. // The key contrast is years#alters_base: does baseline network size
+. // affect the cognitive TRAJECTORY differently for lonely vs non-lonely?
+. estimates table lon_low lon_high, b(%9.3f) se ///
+>     keep(years alters_base c.years#c.alters_base) ///
+>     title("Network effect on cognitive trajectory: low vs high loneliness")
+
+Network effect on cognitive trajectory: low vs high loneliness
+
+--------------------------------------
+    Variable |  lon_low    lon_high   
+-------------+------------------------
+       years |    -0.027       0.011  
+             |     0.011       0.013  
+ alters_base |    -0.018       0.029  
+             |     0.020       0.025  
+             |
+     c.years#|
+          c. |
+ alters_base |     0.008      -0.003  
+             |     0.003       0.003  
+--------------------------------------
+                          Legend: b/se
+
+. 
+. // visualise each group's trajectories by baseline network size
+. foreach g in 0 1 {
+  2.     estimates restore lon_`=cond(`g'==0,"low","high")'
+  3.     margins, at(years=(0 5 10) alters_base=(1 3 5))
+  4.     marginsplot, ///
+>         title("Cognitive trajectory by baseline network size") ///
+>         note("`=cond(`g'==0,"Low","High")' loneliness group" "Adjusted for age, sex, race, education") ///
+>         ytitle("Cognition (within-wave z-score)") ///
+>         xtitle("Years since baseline") legend(title("Baseline no. of alters"))
+  5.     graph export "lonely_strat_margins_`=cond(`g'==0,"low","high")'.png", ///
+>         replace width(1600)
+  6. }
+(results lon_low are active now)
+
+Predictive margins                                       Number of obs = 2,148
+
+Expression: Linear prediction, fixed portion, predict()
+1._at: years       =  0
+       alters_base =  1
+2._at: years       =  0
+       alters_base =  3
+3._at: years       =  0
+       alters_base =  5
+4._at: years       =  5
+       alters_base =  1
+5._at: years       =  5
+       alters_base =  3
+6._at: years       =  5
+       alters_base =  5
+7._at: years       = 10
+       alters_base =  1
+8._at: years       = 10
+       alters_base =  3
+9._at: years       = 10
+       alters_base =  5
+
+------------------------------------------------------------------------------
+             |            Delta-method
+             |     Margin   std. err.      z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+         _at |
+          1  |   .1486278   .0628673     2.36   0.018     .0254101    .2718455
+          2  |   .1122212   .0332678     3.37   0.001     .0470175    .1774248
+          3  |   .0758145   .0382711     1.98   0.048     .0008046    .1508245
+          4  |   .0536617   .0455921     1.18   0.239    -.0356971    .1430206
+          5  |   .0961954   .0237756     4.05   0.000     .0495961    .1427947
+          6  |   .1387291   .0274889     5.05   0.000     .0848519    .1926063
+          7  |  -.0413043   .0637308    -0.65   0.517    -.1662144    .0836058
+          8  |   .0801697   .0337392     2.38   0.017      .014042    .1462974
+          9  |   .2016437   .0388078     5.20   0.000     .1255819    .2777056
+------------------------------------------------------------------------------
+
+Variables that uniquely identify margins: years alters_base
+file /Users/margaretmushi/Desktop/SRP/claude_trial2/nshap-networks-cognition/lonely_strat_margins_low.png
+    saved as PNG format
+(results lon_high are active now)
+
+Predictive margins                                       Number of obs = 1,710
+
+Expression: Linear prediction, fixed portion, predict()
+1._at: years       =  0
+       alters_base =  1
+2._at: years       =  0
+       alters_base =  3
+3._at: years       =  0
+       alters_base =  5
+4._at: years       =  5
+       alters_base =  1
+5._at: years       =  5
+       alters_base =  3
+6._at: years       =  5
+       alters_base =  5
+7._at: years       = 10
+       alters_base =  1
+8._at: years       = 10
+       alters_base =  3
+9._at: years       = 10
+       alters_base =  5
+
+------------------------------------------------------------------------------
+             |            Delta-method
+             |     Margin   std. err.      z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+         _at |
+          1  |  -.0455374   .0759769    -0.60   0.549    -.1944495    .1033747
+          2  |    .013197   .0397006     0.33   0.740    -.0646147    .0910087
+          3  |   .0719314   .0491468     1.46   0.143    -.0243946    .1682573
+          4  |  -.0034337   .0546109    -0.06   0.950    -.1104691    .1036017
+          5  |   .0272491   .0281114     0.97   0.332    -.0278483    .0823465
+          6  |   .0579319   .0350524     1.65   0.098    -.0107696    .1266334
+          7  |     .03867   .0746541     0.52   0.604    -.1076493    .1849893
+          8  |   .0413012   .0389873     1.06   0.289    -.0351124    .1177149
+          9  |   .0439324   .0482768     0.91   0.363    -.0506884    .1385533
+------------------------------------------------------------------------------
+
+Variables that uniquely identify margins: years alters_base
+file /Users/margaretmushi/Desktop/SRP/claude_trial2/nshap-networks-cognition/lonely_strat_margins_high.png
+    saved as PNG format
+
+. 
+. //========================================================================
+. // Export fixed + random effects for BOTH groups to a 4-sheet workbook:
+. //   "Low - Fixed", "High - Fixed", "Low - Random", "High - Random".
+. // Uses the FE_/RE_ matrices captured right after each group's mixed
+. // command. Written cell-by-cell (robust across Stata versions).
+. //========================================================================
+. local xlfile "loneliness_stratified_models.xlsx"
+
+. 
+. // -- fixed-effects sheets (one per group) --
+. local first = 1
+
+. foreach g in low high {
+  2.     local G = proper("`g'")
+  3.     matrix M = FE_`g'
+  4.     if `first' {
+  5.         putexcel set "`xlfile'", sheet("`G' - Fixed") replace
+  6.         local first = 0
+  7.     }
+  8.     else {
+  9.         putexcel set "`xlfile'", sheet("`G' - Fixed") modify
+ 10.     }
+ 11.     putexcel A1 = ("`G' loneliness group -- fixed effects")
+ 12.     putexcel A3 = ("Parameter")
+ 13.     putexcel B3 = ("b")
+ 14.     putexcel C3 = ("SE")
+ 15.     putexcel D3 = ("z")
+ 16.     putexcel E3 = ("p")
+ 17.     putexcel F3 = ("ll (95%)")
+ 18.     putexcel G3 = ("ul (95%)")
+ 19.     local fn : rowfullnames M
+ 20.     local nf = rowsof(M)
+ 21.     forvalues r = 1/`nf' {
+ 22.         local nm : word `r' of `fn'
+ 23.         local xr = `r' + 3
+ 24.         putexcel A`xr' = ("`nm'")
+ 25.         putexcel B`xr' = (M[`r',1])
+ 26.         putexcel C`xr' = (M[`r',2])
+ 27.         putexcel D`xr' = (M[`r',3])
+ 28.         putexcel E`xr' = (M[`r',4])
+ 29.         putexcel F`xr' = (M[`r',5])
+ 30.         putexcel G`xr' = (M[`r',6])
+ 31.     }
+ 32. }
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+
+. 
+. // -- random-effects sheets (one per group) --
+. foreach g in low high {
+  2.     local G = proper("`g'")
+  3.     matrix M = RE_`g'
+  4.     putexcel set "`xlfile'", sheet("`G' - Random") modify
+  5.     putexcel A1 = ("`G' loneliness group -- random-effects (co)variance")
+  6.     local nc = colsof(M)
+  7.     local cn : colfullnames M
+  8.     forvalues c = 1/`nc' {
+  9.         local L : word `c' of `cn'
+ 10.         local col = char(65 + `c')
+ 11.         putexcel `col'3 = ("`L'")
+ 12.     }
+ 13.     local rn : rowfullnames M
+ 14.     forvalues r = 1/`nc' {
+ 15.         local nm : word `r' of `rn'
+ 16.         local xr = `r' + 3
+ 17.         putexcel A`xr' = ("`nm'")
+ 18.         forvalues c = 1/`nc' {
+ 19.             local col = char(65 + `c')
+ 20.             putexcel `col'`xr' = (M[`r',`c'])
+ 21.         }
+ 22.     }
+ 23. }
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+file loneliness_stratified_models.xlsx saved
+
+. 
+. log close
+      name:  <unnamed>
+       log:  /Users/margaretmushi/Desktop/SRP/claude_trial2/nshap-networks-cognition/loneliness-stratified-mo
+> del.log
+  log type:  text
+ closed on:  13 Aug 2026, 19:32:28
+-------------------------------------------------------------------------------------------------------------
